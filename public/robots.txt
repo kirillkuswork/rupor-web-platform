@@ -1,0 +1,9 @@
+# *
+User-agent: *
+Allow: /
+
+# Host
+Host: https://web-platform.rupor-dev.rutube.dev
+
+# Sitemaps
+Sitemap: https://web-platform.rupor-dev.rutube.dev/sitemap.xml

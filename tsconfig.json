@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/entities/*": ["./src/entities/*"],
+      "@/features/*": ["./src/features/*"],
+      "@/sections/*": ["./src/sections/*"],
+      "@/temporals/*": ["./src/temporals/*"],
+      "@/shareds": ["./src/shareds/ui/index"],
+      "@/consts/*": ["./src/shareds/consts/*"],
+      "@/helpres/*": ["./src/shareds/helpres/*"],
+      "@/layouts": ["./src/shareds/layouts/index"],
+      "@/assets/*": ["./src/shareds/assets/*"],
+      "@/styles/*": ["./src/shareds/styles/*"],
+      "@/providers/*": ["./src/shareds/providers/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "src/shared/utils/constants.ts",
+    ".eslintrc.cjs",
+    "next-i18next.config.js",
+    "node_modules/preact/src/internal.d.ts"
+  ],
+  "exclude": ["node_modules"]
+}

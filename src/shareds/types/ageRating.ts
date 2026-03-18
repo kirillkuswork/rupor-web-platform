@@ -1,0 +1,5 @@
+export type TAgeRating = 'AGE_RATING_INVALID' |
+'AGE_RATING_0' |
+'AGE_RATING_6' |
+'AGE_RATING_12' |
+'AGE_RATING_18';

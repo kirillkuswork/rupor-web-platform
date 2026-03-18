@@ -1,0 +1,396 @@
+include:
+  - project: 'cyber-rom/rupor/common-pipeline'
+    ref: main
+    file: 'sca-sast/defectdojo-push.yml'
+
+image: registry-cbrom.rutube.ru/repository/cbrom-docker/devops/docker:20.10.24-cyrm
+
+stages:
+  - sast
+  - sca
+  - build
+  - sca-image
+  - report-push
+  - deploy
+
+variables:
+  GIT_STRATEGY: clone
+  IMAGE_TAG: $CI_COMMIT_SHA
+  PROJECT_ID: rupor
+
+trivy-repo:
+  stage: sca
+  image:
+    name: ${DEVSECOPS_REPO}/trivy
+    entrypoint: [""]
+  variables:
+    DD_SCAN_TYPE: "Trivy Scan"
+    DD_TEST_NAME: "Trivy repository scan"
+    REPORT_FILE: "vuln-reports/vuln_Trivy-repo_$CI_PROJECT_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA.json"
+    META_FILE: "vuln-reports/vuln_Trivy-repo_$CI_PROJECT_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA.meta"
+  tags:
+    - md2
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+  before_script:
+    - mkdir -p vuln-reports
+    - printf "DD_SCAN_TYPE=\"$DD_SCAN_TYPE\"\nDD_TEST_NAME=\"$DD_TEST_NAME\"" > $META_FILE
+  script:
+    - trivy --version
+    - trivy repo --skip-db-update --branch $CI_COMMIT_REF_NAME $CI_REPOSITORY_URL -f json -o "$REPORT_FILE"
+  artifacts:
+    when: always
+    paths:
+      - $REPORT_FILE
+      - $META_FILE
+    expire_in: 1 day
+
+.build-image:
+  stage: build
+  services:
+    - registry-cbrom.rutube.ru/repository/cbrom-docker/devops/docker:20.10.24-dind
+  tags:
+    - md2
+  before_script:
+    - |
+      for i in $(seq 1 60); do
+          if ! docker info &> /dev/null; then
+              echo "Docker not responding yet. Sleeping for 2s..." && sleep 2s
+          else
+              echo "Docker ready. Continuing build..."
+              break
+          fi
+      done
+    - docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD" $DOCKER_REGISTRY
+    - echo "always-auth=true" >> .npmrc
+    - echo "//registry.rutube.ru/repository/cbrom-npm-group/:_auth=${NEXUS_NPM_GROUP_TOKEN}"  >> .npmrc
+
+build-dev:
+  extends: .build-image
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: always
+  script:
+    - echo ${HTTP_PROXY}
+    - echo ${HTTPS_PROXY}
+    - echo ${NO_PROXY}
+    - docker build
+      --build-arg NEXT_PUBLIC_NODE_ENV=production
+      --build-arg NEXT_PUBLIC_API_URL=https://api.rupor-dev.rutube.dev
+      --build-arg NEXT_PUBLIC_IMG_PROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      --build-arg NEXT_PUBLIC_IMG_PROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+      --build-arg NEXT_PUBLIC_IMG_PROXY_URL=https://imgproxy.rupor-dev.rutube.dev
+      --build-arg NEXT_PUBLIC_API_COOKIE_DOMAIN=.rupor-dev.rutube.dev
+      --build-arg I18_LANGUAGE_FOLDER=./public/locales
+      --build-arg NEXT_PUBLIC_AUTH_MODE_TYPE=2
+      --build-arg NEXT_PUBLIC_STUDIO_URL=https://web-studio.rupor-dev.rutube.dev
+      --build-arg NEXT_PUBLIC_VERSION_ID=2
+      --build-arg NEXT_PUBLIC_LOCALIZE_URL=https://api.rupor-dev.rutube.dev/localize-app/v1
+      --build-arg NEXT_PUBLIC_METRICS_API_URL=https://metrics.rupor-dev.rutube.dev
+      --pull -t $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-dev .
+    - docker push $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-dev
+
+build-test:
+  extends: .build-image
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: always
+  script:
+    - echo ${HTTP_PROXY}
+    - echo ${HTTPS_PROXY}
+    - echo ${NO_PROXY}
+    - docker build
+      --build-arg NEXT_PUBLIC_NODE_ENV=production
+      --build-arg NEXT_PUBLIC_API_URL=https://api.rupor-test.rutube.dev
+      --build-arg NEXT_PUBLIC_IMG_PROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      --build-arg NEXT_PUBLIC_IMG_PROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+      --build-arg NEXT_PUBLIC_IMG_PROXY_URL=https://imgproxy.rupor-test.rutube.dev
+      --build-arg NEXT_PUBLIC_API_COOKIE_DOMAIN=.rupor-test.rutube.dev
+      --build-arg I18_LANGUAGE_FOLDER=./public/locales
+      --build-arg NEXT_PUBLIC_AUTH_MODE_TYPE=2
+      --build-arg NEXT_PUBLIC_STUDIO_URL=https://web-studio.rupor-test.rutube.dev
+      --build-arg NEXT_PUBLIC_VERSION_ID=2
+      --build-arg NEXT_PUBLIC_LOCALIZE_URL=https://api.rupor-dev.rutube.dev/localize-app/v1
+      --build-arg NEXT_PUBLIC_METRICS_API_URL=https://metrics.rupor-test.rutube.dev
+      --pull -t $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-test .
+    - docker push $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-test
+
+build-perf:
+  extends: .build-image
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: always
+  script:
+    - echo ${HTTP_PROXY}
+    - echo ${HTTPS_PROXY}
+    - echo ${NO_PROXY}
+    - docker build
+      --build-arg NEXUS_TOKEN=${NEXUS_TOKEN}
+      --build-arg NEXT_PUBLIC_NODE_ENV=production
+      --build-arg NEXT_PUBLIC_API_URL=https://api.rupor-perf.rutube.dev
+      --build-arg NEXT_PUBLIC_IMG_PROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      --build-arg NEXT_PUBLIC_IMG_PROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+      --build-arg NEXT_PUBLIC_IMG_PROXY_URL=https://imgproxy.rupor-perf.rutube.dev
+      --build-arg NEXT_PUBLIC_API_COOKIE_DOMAIN=.rupor-perf.rutube.dev
+      --build-arg I18_LANGUAGE_FOLDER=./public/locales
+      --build-arg NEXT_PUBLIC_AUTH_MODE_TYPE=2
+      --build-arg NEXT_PUBLIC_STUDIO_URL=https://web-studio.rupor-perf.rutube.dev
+      --build-arg NEXT_PUBLIC_VERSION_ID=2
+      --build-arg NEXT_PUBLIC_LOCALIZE_URL=https://api.rupor-dev.rutube.dev/localize-app/v1
+      --build-arg NEXT_PUBLIC_METRICS_API_URL=https://metrics.rupor-perf.rutube.dev
+      --pull -t $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-perf .
+    - docker push $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-perf
+
+build-sec:
+  extends: .build-image
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: always
+  script:
+    - echo ${HTTP_PROXY}
+    - echo ${HTTPS_PROXY}
+    - echo ${NO_PROXY}
+    - docker build
+      --build-arg NEXUS_TOKEN=${NEXUS_TOKEN}
+      --build-arg NEXT_PUBLIC_NODE_ENV=production
+      --build-arg NEXT_PUBLIC_API_URL=https://api.rupor-sec.rutube.dev
+      --build-arg NEXT_PUBLIC_IMG_PROXY_KEY=
+      --build-arg NEXT_PUBLIC_IMG_PROXY_SALT=
+      --build-arg NEXT_PUBLIC_IMG_PROXY_URL=https://imgproxy.rupor-sec.rutube.dev
+      --build-arg NEXT_PUBLIC_API_COOKIE_DOMAIN=.rupor-sec.rutube.dev
+      --build-arg I18_LANGUAGE_FOLDER=./public/locales
+      --build-arg NEXT_PUBLIC_AUTH_MODE_TYPE=2
+      --build-arg NEXT_PUBLIC_STUDIO_URL=https://web-studio.rupor-sec.rutube.dev
+      --build-arg NEXT_PUBLIC_VERSION_ID=2
+      --build-arg NEXT_PUBLIC_LOCALIZE_URL=https://api.rupor-dev.rutube.dev/localize-app/v1
+      --build-arg NEXT_PUBLIC_METRICS_API_URL=https://metrics.rupor-sec.rutube.dev
+      --pull -t $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-sec .
+    - docker push $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-sec
+
+trivy-image:
+  stage: sca-image
+  image:
+    name: ${DEVSECOPS_REPO}/trivy
+    entrypoint: [""]
+  variables:
+    DD_SCAN_TYPE: "Trivy Scan"
+    DD_TEST_NAME: "Trivy image scan"
+    REPORT_FILE: "vuln-reports/vuln_Trivy-image_$CI_PROJECT_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA.json"
+    META_FILE: "vuln-reports/vuln_Trivy-image_$CI_PROJECT_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA.meta"
+  tags:
+    - md2
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+  needs:
+    - build-test
+  allow_failure: true
+  before_script:
+    - mkdir -p vuln-reports
+    - printf "DD_SCAN_TYPE=\"$DD_SCAN_TYPE\"\nDD_TEST_NAME=\"$DD_TEST_NAME\"" > $META_FILE
+  script:
+    - trivy --version
+    - trivy image --skip-db-update --username $DOCKER_REGISTRY_USER --password $DOCKER_REGISTRY_PASSWORD $DOCKER_REGISTRY/$CI_PROJECT_NAME:$IMAGE_TAG-test -f json -o "$REPORT_FILE"
+  artifacts:
+    when: always
+    paths:
+      - $REPORT_FILE
+      - $META_FILE
+    expire_in: 1 day
+
+defectdojo-push:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+
+deploy-dev:
+  stage: deploy
+  image: registry-cbrom.rutube.ru/repository/cbrom-docker/devops/helm:latest
+  needs:
+    - build-dev
+  tags:
+    - md2
+  variables:
+    ENVIRONMENT: dev
+  environment:
+    name: $PROJECT_ID-$ENVIRONMENT
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+  script:
+    - cd .cicd/k8s
+    - export KUBECONFIG=${KUBECONFIG}
+    - chmod 600 /builds/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.tmp/KUBECONFIG
+    - helm upgrade --install -n rupor-dev $CI_PROJECT_NAME .
+      --set image.repository="registry-cbrom.rutube.ru/repository/cbrom-docker/rupor/$CI_PROJECT_NAME"
+      --set image.tag="$IMAGE_TAG-dev"
+      --set imagePullSecrets[0].name="ruform-rupor"
+      --set ingress.hosts[0].host="web-platform.rupor-dev.rutube.dev"
+      --set ingress.hosts[0].paths[0].path="/"
+      --set ingress.hosts[0].paths[0].pathType="ImplementationSpecific"
+      --set resources.requests.cpu="100m"
+      --set resources.requests.memory="100Mi"
+      --set resources.limits.cpu="3"
+      --set resources.limits.memory="2048Mi"
+      --set env.VERSION="$CI_COMMIT_REF_NAME"
+
+deploy-test:
+  stage: deploy
+  image: registry-cbrom.rutube.ru/repository/cbrom-docker/devops/helm:latest
+  needs:
+    - build-test
+  tags:
+    - md2
+  variables:
+    ENVIRONMENT: test
+  environment:
+    name: $PROJECT_ID-$ENVIRONMENT
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+  script:
+    - cd .cicd/k8s
+    - export KUBECONFIG=${KUBECONFIG}
+    - chmod 600 /builds/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.tmp/KUBECONFIG
+    - helm upgrade --install -n rupor-test $CI_PROJECT_NAME .
+      --set image.repository="registry-cbrom.rutube.ru/repository/cbrom-docker/rupor/$CI_PROJECT_NAME"
+      --set image.tag="$IMAGE_TAG-test"
+      --set imagePullSecrets[0].name="ruform-rupor"
+      --set ingress.hosts[0].host="web-platform.rupor-test.rutube.dev"
+      --set ingress.hosts[0].paths[0].path="/"
+      --set ingress.hosts[0].paths[0].pathType="ImplementationSpecific"
+      --set resources.requests.cpu="100m"
+      --set resources.requests.memory="100Mi"
+      --set resources.limits.cpu="3"
+      --set resources.limits.memory="2048Mi"
+      --set env.VERSION="$CI_COMMIT_REF_NAME"
+  after_script:
+    - export SVC_VERSION=$(git tag --points-at $CI_COMMIT_SHA | grep "$CI_COMMIT_BRANCH")
+    - if [[ -z $SVC_VERSION ]]; then export SVC_VERSION="$CI_COMMIT_BRANCH"; fi
+    - JOB_RES=$([ "$CI_JOB_STATUS" == "success" ] && echo "🟢success🟢" || echo "🔴failed🔴")
+    - |
+      VKT_DEPLOY_MESSAGE=$(cat << EOF
+      ⚠ На <b>$ENVIRONMENT</b> запущено обновление сервиса <b>$CI_PROJECT_NAME</b> пользователем <b>$GITLAB_USER_NAME</b>
+      Версия: $SVC_VERSION
+      Commit: $CI_COMMIT_SHA
+      Job: $CI_JOB_URL
+      Результат: $JOB_RES
+      Список версий по всем стендам для $CI_PROJECT_NAME: https://api.rupor-dev.rutube.dev/svcversions/json/diff?svcname=$CI_PROJECT_NAME
+      EOF
+      )
+    - curl --data-urlencode "text=$VKT_DEPLOY_MESSAGE" "https://api.gpmteams.ru/bot/v1/messages/sendText?chatId=$VKT_CHAT_ID&parseMode=HTML&token=$VKT_BOT_TOKEN"
+
+deploy-perf:
+  stage: deploy
+  image: registry-cbrom.rutube.ru/repository/cbrom-docker/devops/helm:latest
+  needs:
+    - build-perf
+  tags:
+    - md2
+  variables:
+    ENVIRONMENT: perf
+  environment:
+    name: $PROJECT_ID-$ENVIRONMENT
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+  script:
+    - cd .cicd/k8s
+    - export KUBECONFIG=${KUBECONFIG}
+    - chmod 600 /builds/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.tmp/KUBECONFIG
+    - helm upgrade --install -n rupor-perf $CI_PROJECT_NAME .
+      --set image.repository="registry-cbrom.rutube.ru/repository/cbrom-docker/rupor/$CI_PROJECT_NAME"
+      --set image.tag="$IMAGE_TAG-perf"
+      --set imagePullSecrets[0].name="ruform-rupor"
+      --set ingress.hosts[0].host="web-platform.rupor-perf.rutube.dev"
+      --set ingress.hosts[0].paths[0].path="/"
+      --set ingress.hosts[0].paths[0].pathType="ImplementationSpecific"
+      --set resources.requests.cpu="100m"
+      --set resources.requests.memory="100Mi"
+      --set resources.limits.cpu="3"
+      --set resources.limits.memory="2048Mi"
+      --set env.VERSION="$CI_COMMIT_REF_NAME"
+  after_script:
+    - export SVC_VERSION=$(git tag --points-at $CI_COMMIT_SHA | grep "$CI_COMMIT_BRANCH")
+    - if [[ -z $SVC_VERSION ]]; then export SVC_VERSION="$CI_COMMIT_BRANCH"; fi
+    - JOB_RES=$([ "$CI_JOB_STATUS" == "success" ] && echo "🟢success🟢" || echo "🔴failed🔴")
+    - |
+      VKT_DEPLOY_MESSAGE=$(cat << EOF
+      ⚠ На <b>$ENVIRONMENT</b> запущено обновление сервиса <b>$CI_PROJECT_NAME</b> пользователем <b>$GITLAB_USER_NAME</b>
+      Версия: $SVC_VERSION
+      Commit: $CI_COMMIT_SHA
+      Job: $CI_JOB_URL
+      Результат: $JOB_RES
+      Список версий по всем стендам для $CI_PROJECT_NAME: https://api.rupor-dev.rutube.dev/svcversions/json/diff?svcname=$CI_PROJECT_NAME
+      EOF
+      )
+    - curl --data-urlencode "text=$VKT_DEPLOY_MESSAGE" "https://api.gpmteams.ru/bot/v1/messages/sendText?chatId=$VKT_CHAT_ID&parseMode=HTML&token=$VKT_BOT_TOKEN"
+
+deploy-sec:
+  stage: deploy
+  image: registry-cbrom.rutube.ru/repository/cbrom-docker/devops/helm:latest
+  needs:
+    - build-sec
+  tags:
+    - md2
+  variables:
+    ENVIRONMENT: sec
+  environment:
+    name: $PROJECT_ID-$ENVIRONMENT
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+  script:
+    - cd .cicd/k8s
+    - export KUBECONFIG=${KUBECONFIG}
+    - chmod 600 /builds/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.tmp/KUBECONFIG
+    - helm upgrade --install -n rupor-sec $CI_PROJECT_NAME .
+      --set image.repository="registry-cbrom.rutube.ru/repository/cbrom-docker/rupor/$CI_PROJECT_NAME"
+      --set image.tag="$IMAGE_TAG-sec"
+      --set imagePullSecrets[0].name="ruform-rupor"
+      --set ingress.hosts[0].host="web-platform.rupor-sec.rutube.dev"
+      --set ingress.hosts[0].paths[0].path="/"
+      --set ingress.hosts[0].paths[0].pathType="ImplementationSpecific"
+      --set resources.requests.cpu="100m"
+      --set resources.requests.memory="100Mi"
+      --set resources.limits.cpu="3"
+      --set resources.limits.memory="2048Mi"
+      --set env.VERSION="$CI_COMMIT_REF_NAME"
+  after_script:
+    - export SVC_VERSION=$(git tag --points-at $CI_COMMIT_SHA | grep "$CI_COMMIT_BRANCH")
+    - if [[ -z $SVC_VERSION ]]; then export SVC_VERSION="$CI_COMMIT_BRANCH"; fi
+    - JOB_RES=$([ "$CI_JOB_STATUS" == "success" ] && echo "🟢success🟢" || echo "🔴failed🔴")
+    - |
+      VKT_DEPLOY_MESSAGE=$(cat << EOF
+      ⚠ На <b>$ENVIRONMENT</b> запущено обновление сервиса <b>$CI_PROJECT_NAME</b> пользователем <b>$GITLAB_USER_NAME</b>
+      Версия: $SVC_VERSION
+      Commit: $CI_COMMIT_SHA
+      Job: $CI_JOB_URL
+      Результат: $JOB_RES
+      Список версий по всем стендам для $CI_PROJECT_NAME: https://api.rupor-dev.rutube.dev/svcversions/json/diff?svcname=$CI_PROJECT_NAME
+      EOF
+      )
+    - curl --data-urlencode "text=$VKT_DEPLOY_MESSAGE" "https://api.gpmteams.ru/bot/v1/messages/sendText?chatId=$VKT_CHAT_ID&parseMode=HTML&token=$VKT_BOT_TOKEN"

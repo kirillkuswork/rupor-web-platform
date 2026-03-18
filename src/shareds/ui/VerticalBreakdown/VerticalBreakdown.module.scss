@@ -1,0 +1,11 @@
+.VerticalBreakdown {
+  margin: 0 16px;
+
+  &:after {
+    display: block;
+    content: "";
+    height: 25px;
+    width: 1px;
+    background-color: rgb(37 38 40 / 1);;
+  }
+}

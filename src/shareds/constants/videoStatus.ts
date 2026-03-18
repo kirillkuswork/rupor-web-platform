@@ -1,0 +1,15 @@
+export const VideoSharedVideoStatus = {
+  Undefined: 'VIDEO_STATUS_UNDEFINED',
+  Base: 'VIDEO_STATUS_BASE',
+  Published: 'VIDEO_STATUS_PUBLISHED',
+  Uploading: 'VIDEO_STATUS_UPLOADING',
+  UploadingFailed: 'VIDEO_STATUS_UPLOADING_FAILED',
+  Processing: 'VIDEO_STATUS_PROCESSING',
+  ProcessingFailed: 'VIDEO_STATUS_PROCESSING_FAILED',
+  Moderation: 'VIDEO_STATUS_MODERATION',
+  Blocked: 'VIDEO_STATUS_BLOCKED',
+  Draft: 'VIDEO_STATUS_DRAFT',
+  Delayed: 'VIDEO_STATUS_DELAYED',
+  Deleted: 'VIDEO_STATUS_DELETED',
+  Unpublished: 'VIDEO_STATUS_UNPUBLISHED',
+};

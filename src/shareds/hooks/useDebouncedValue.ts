@@ -1,0 +1,22 @@
+import { useEffect, useState } from 'react';
+
+/**
+ * Хук, возвращающий значение с задержкой (debounce)
+ * @param value - входное значение
+ * @param delay - задержка в мс
+ */
+export const useDebouncedValue = <T>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};

@@ -1,0 +1,48 @@
+.CommonLayout {
+  display: grid;
+  width: 100%;
+  height: 100%;
+}
+
+
+
+.DesktopLayout {
+  grid-template-areas:
+    "player right"
+    "bottom right";
+
+  grid-template-columns: 1fr 480px;
+  grid-template-rows: 1fr 1fr;
+  column-gap: 1.5em;
+
+  .Player {
+    grid-area: player;
+  }
+  .BottomContent {
+    grid-area: bottom;
+  }
+  .RightContent {
+    grid-area: right;
+  }
+}
+
+
+.MobileLayout {
+
+  grid-template-areas:
+    "player"
+    "bottom";
+
+  grid-template-columns: 1fr;
+
+  .Player {
+    grid-area: player;
+  }
+  .BottomContent {
+    grid-area: bottom;
+  }
+  .RightContent {
+    grid-area: right;
+    display: none
+  }
+}
